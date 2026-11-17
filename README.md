@@ -4,7 +4,7 @@
 
 A secure, multi-tier AWS network: public and private subnets across two Availability Zones, a NAT gateway, a bastion host, tightly scoped security groups, and an **encrypted RDS PostgreSQL** database that is never exposed to the internet.
 
-**How I built it:** I built this lab by hand in the **AWS Console** to understand every component – the VPC, subnets, route tables, NAT gateway, bastion host and security groups – then ran RDS PostgreSQL privately and moved it to encrypted storage (snapshot → encrypted copy → restore), checking that every row was still there.
+**How I built it:** I built this lab by hand in the **AWS Console** to understand every component – the VPC, subnets, route tables, NAT gateway, bastion host, security groups and network ACLs – then ran RDS PostgreSQL privately and moved it to encrypted storage (snapshot → encrypted copy → restore), checking that every row was still there.
 
 **The Terraform in this repo** describes the same design as Infrastructure as Code, so the environment can be recreated, reviewed and destroyed with one command. It passes `terraform fmt` and `terraform validate` in CI. Running a full `terraform apply` of this version is my next step (see below).
 
@@ -19,11 +19,13 @@ A secure, multi-tier AWS network: public and private subnets across two Availabi
 | Access | Bastion host (EC2) in a public subnet | The **only** entry point. SSH is allowed from my IP address only |
 | App tier | EC2 instance in a private subnet | No public IP. Reached only through the bastion |
 | Data tier | RDS PostgreSQL 16 in a DB subnet group across both AZs | `publicly_accessible = false`, encrypted at rest, plus an encrypted manual snapshot |
+| Subnet firewall | Network ACLs for the public and private subnets | A second, **stateless** layer: only the ports each subnet needs, everything else denied |
 | Security | Security groups that reference each other | DB accepts port 5432 **only** from the bastion and app security groups |
 
 ## Security decisions
 
 - **Least privilege networking:** each security group allows only the traffic that tier needs, using security-group references instead of wide CIDR ranges.
+- **Defence in depth with NACLs:** every subnet has its own network ACL. The public NACL allows SSH only from my IP plus web and return traffic; the private NACL allows SSH only from the public subnets and PostgreSQL only from inside the VPC. Because NACLs are stateless, return traffic on ephemeral ports (1024–65535) is allowed explicitly.
 - **No public database:** RDS lives in private subnets with `publicly_accessible = false`.
 - **Encryption everywhere:** RDS storage, the RDS snapshot and the EC2 root volumes are all encrypted.
 - **No passwords in code:** `manage_master_user_password = true` makes RDS generate the password and store it in **AWS Secrets Manager**.
@@ -79,6 +81,8 @@ terraform destroy
 - Why private instances need a NAT gateway to download updates, and why it must sit in a public subnet
 - Using a bastion host and SSH jump (`-J`) to reach instances that have no public IP
 - Chaining security groups so each tier only trusts the tier in front of it
+- The difference between security groups (instance level, stateful, allow only) and NACLs (subnet level, stateless, allow and deny, numbered rules)
+- Why a stateless NACL must allow ephemeral return ports, or connections silently fail
 - Why RDS needs a DB subnet group across at least two AZs
 - That snapshots of an encrypted database are automatically encrypted
 - How the same console design is described as Terraform resources (VPC, subnets, route tables, security groups, RDS)
