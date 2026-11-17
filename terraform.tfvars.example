@@ -1,0 +1,6 @@
+# Copy this file to terraform.tfvars and put in your own IP address.
+# Find your IP at https://checkip.amazonaws.com and add /32 to the end.
+my_ip_cidr = "203.0.113.10/32"
+
+# ssh_public_key_path = "~/.ssh/id_ed25519.pub"
+# region              = "eu-west-2"
